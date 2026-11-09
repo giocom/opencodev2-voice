@@ -156,6 +156,34 @@ test("does not send chat_template_kwargs when not configured", async () => {
   }
 });
 
+test("direct apiKey option is sent as Bearer header, beating apiKeyEnv", async () => {
+  process.env.VOICE_LLM_KEY = "env-key";
+  const captured = [];
+  const previousFetch = globalThis.fetch;
+
+  globalThis.fetch = async (url, options) => {
+    captured.push(options);
+    return createJsonResponse(200, {
+      choices: [{ message: { content: "ok" } }],
+    });
+  };
+
+  try {
+    const client = createClient({
+      endpoint: "https://llm.test/v1",
+      model: "m",
+      apiKey: "direct",
+      apiKeyEnv: "VOICE_LLM_KEY",
+      retries: 0,
+    });
+    await client.complete({ prompt: "hi" });
+    assert.equal(captured[0].headers.Authorization, "Bearer direct");
+  } finally {
+    globalThis.fetch = previousFetch;
+    delete process.env.VOICE_LLM_KEY;
+  }
+});
+
 test("sends requests without Authorization header when no apiKeyEnv", async () => {
   const previousFetch = globalThis.fetch;
   const requests = [];
@@ -177,6 +205,26 @@ test("sends requests without Authorization header when no apiKeyEnv", async () =
     const result = await client.complete({ prompt: "Test" });
     assert.equal(result.text, "text");
     assert.equal(requests[0].options.headers.Authorization, undefined);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("no key configured sends no Authorization header", async () => {
+  const captured = [];
+  const previousFetch = globalThis.fetch;
+
+  globalThis.fetch = async (url, options) => {
+    captured.push(options);
+    return createJsonResponse(200, {
+      choices: [{ message: { content: "ok" } }],
+    });
+  };
+
+  try {
+    const client = createClient({ endpoint: "https://llm.test/v1", model: "m", retries: 0 });
+    await client.complete({ prompt: "hi" });
+    assert.equal(captured[0].headers.Authorization, undefined);
   } finally {
     globalThis.fetch = previousFetch;
   }
