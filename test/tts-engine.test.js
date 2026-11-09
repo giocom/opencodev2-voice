@@ -322,3 +322,38 @@ test("http mode: missing ttsModel toasts and does not fetch", async () => {
   assert.equal(calls.fetch.length, 0);
   assert.ok(calls.toasts.some(([m, v]) => m === "TTS model not configured" && v === "warning"));
 });
+
+test("a new speak stops the previously playing audio", async () => {
+  const { deps, calls, procs } = makeDeps({ exist: ["mpv"] });
+  const engine = createTtsEngine(withToast({ ...baseConfig }, calls), logger, deps);
+  const p1 = engine.speak("first");
+  await drain();
+  const p2 = engine.speak("second");
+  await drain();
+  assert.equal(procs[0].killed, true, "first player must be killed before the second starts");
+  assert.equal(procs.length, 2);
+  procs[0].emit("close");
+  procs[1].emit("close");
+  await p1;
+  await p2;
+});
+
+test("200 with body-read failure toasts and does not throw", async () => {
+  const { deps, calls } = makeDeps({
+    exist: ["mpv"],
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => {
+        throw new Error("socket closed");
+      },
+    }),
+  });
+  const engine = createTtsEngine(withToast({ ...baseConfig }, calls), logger, deps);
+  await engine.speak("hello");
+  assert.equal(calls.write.length, 0);
+  assert.equal(calls.spawn.length, 0);
+  assert.ok(
+    calls.toasts.some(([m, v]) => m.startsWith("TTS: failed to save audio") && v === "warning"),
+  );
+});
