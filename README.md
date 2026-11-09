@@ -36,19 +36,35 @@ The plugin is a TUI-only package, so it is registered in
 }
 ```
 
-**Other machines:** `npm pack` in this repo produces a tgz you can copy
-anywhere, or publish the fork to npm / a git host and use the object form:
+**Other machines:** install from git with the CLI (git specs are supported,
+including private repos via your existing Git credentials):
+
+```sh
+opencode plugin add git+ssh://git@github.com/giocom/opencodev2-voice.git#main
+```
+
+Or clone and add a local directory entry like the one above. The object
+form works once the package is resolvable (e.g. published to npm):
 
 ```json
 {
   "plugins": [
     {
-      "package": "opencode-voice-local",
+      "package": "opencode-voice-local@0.2.0",
       "options": { "ttsEndpoint": "http://10.11.60.146:8001/v1" }
     }
   ]
 }
 ```
+
+(Options can also live in `~/.config/opencode/voice.json` — see below.)
+
+> [!NOTE]
+> **No tarball install.** `npm pack` produces a `.tgz`, but OpenCode cannot
+> install one: `plugin add` rejects tarball targets and config entries must
+> be directories (a path to a single file is skipped). If you must ship a
+> tarball, `npm install ./opencode-voice-local-0.2.0.tgz` into a directory
+> and point the config at the resulting `node_modules/<name>` directory.
 
 > [!NOTE]
 > **Clobbering default keybinds.** This plugin uses `ctrl+r` for voice
