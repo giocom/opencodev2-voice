@@ -7,11 +7,13 @@
 //      with LLM normalization for natural speech.
 //
 // Prerequisites:
-//   STT: brew install whisper-cpp sox
-//   TTS: Piper binary on PATH, voice models at ~/.local/share/piper-voices/
+//   STT: an OpenAI-compatible transcription server (or whisper-cpp locally) + sox
+//   TTS: an OpenAI-compatible /audio/speech server (or Piper) + a player
+//        (mpv, ffplay, or sox/aplay for wav)
 //
-// Configuration via cli.json plugin options:
-//   { "package": "@renjfk/opencode-voice", "options": { "endpoint": "...", "model": "...", "apiKeyEnv": "..." } }
+// Configuration via ~/.config/opencode/voice.json ($VOICE_CONFIG to override)
+// and/or cli.json plugin options (options win on conflict):
+//   { "package": "opencode-voice-local", "options": { "endpoint": "...", "model": "...", "apiKey": "..." } }
 //
 // Runtime state (model, mic, voice, tts mode) persisted via context.storage.
 //
@@ -38,8 +40,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import { Plugin } from "@opencode/plugin/tui";
+import { loadVoiceConfig } from "./lib/config.js";
 import { registerSTT } from "./lib/stt.js";
-import { registerTTS } from "./lib/tts.js";
+import { registerTTS, resolveVoice } from "./lib/tts.js";
+import { createTtsEngine } from "./lib/tts-engine.js";
 import { createClient } from "./lib/llm-client.js";
 import { createLogger } from "./lib/logger.js";
 
@@ -252,7 +256,10 @@ export default Plugin.define({
     const options = context.options;
     const logger = createLogger();
     logger.log("plugin", "Initializing", "debug");
-    const { complete } = createClient(options, logger);
+    // voice.json (or $VOICE_CONFIG) is merged under the cli.json options;
+    // options win on conflict.
+    const voiceConfig = loadVoiceConfig(options);
+    const { complete } = createClient(voiceConfig, logger);
 
     const prompts = {
       stt: loadPromptFile(options?.sttPrompt, logger, "STT"),
@@ -263,8 +270,17 @@ export default Plugin.define({
     const kv = createStorage(context);
     const api = createApi(context, kv);
 
-    const sttCommands = registerSTT(api, kv, complete, prompts, options, logger);
-    const ttsCommands = registerTTS(api, kv, complete, prompts, logger);
+    const engine = createTtsEngine(
+      {
+        ...voiceConfig,
+        getVoice: () => resolveVoice(voiceConfig, kv),
+        toast: (message, variant = "info") => context.ui.toast.show({ message, variant }),
+      },
+      logger,
+    );
+
+    const sttCommands = registerSTT(api, kv, complete, prompts, voiceConfig, logger);
+    const ttsCommands = registerTTS(api, kv, complete, prompts, logger, voiceConfig, engine);
 
     context.keymap.layer(() => ({
       mode: "global",
@@ -273,6 +289,10 @@ export default Plugin.define({
 
     // The keymap layer is removed with the plugin; data listeners are not
     // scoped by the host, so they are detached here (hot reloads, TUI close).
-    return () => api.event.dispose();
+    // Stopping the engine first makes a hot reload not leave audio playing.
+    return () => {
+      engine.stop();
+      api.event.dispose();
+    };
   },
 });
