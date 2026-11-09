@@ -44,7 +44,7 @@ anywhere, or publish the fork to npm / a git host and use the object form:
   "plugins": [
     {
       "package": "opencode-voice-local",
-      "options": { "ttsEndpoint": "http://101.160.146.8001/v1" }
+      "options": { "ttsEndpoint": "http://10.11.60.146:8001/v1" }
     }
   ]
 }
@@ -120,11 +120,11 @@ elsewhere.
   "endpoint": "https://your-llm-gateway/v1",
   "model": "your-llm-model",
   "apiKeyEnv": "LLM_API_KEY",
-  "sttEndpoint": "http://101.160.146.9000/v1",
+  "sttEndpoint": "http://10.11.60.146:9000/v1",
   "sttModel": "Systran/faster-whisper-small",
   "sttApiKey": "sk-...",
-  "ttsEndpoint": "http://101.160.146.8001/v1",
-  "ttsModel": "Qwen/Qwen-TTS-12Hz-0.6B-Base",
+  "ttsEndpoint": "http://10.11.60.146:8001/v1",
+  "ttsModel": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
   "ttsVoice": "Serena",
   "ttsApiKey": "sk-..."
 }
