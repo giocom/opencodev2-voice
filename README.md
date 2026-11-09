@@ -67,8 +67,10 @@ On the machine running the OpenCode TUI:
   picks the first one it finds: `mpv` → `ffplay` → `sox`/`aplay`.
 - **TTS (Piper mode, optional)**: `piper` on PATH and voice models under
   `~/.local/share/piper-voices/` — only needed when no `ttsEndpoint` is set.
-- **LLM**: any OpenAI-compatible `/chat/completions` endpoint for text
-  normalization (Anthropic, OpenAI, Ollama, vLLM, LM Studio, ...).
+- **LLM**: auto-resolved from the model the TUI is currently using (see
+  "LLM auto-resolution" below). Only needed explicitly when the current
+  provider is not OpenAI-compatible or is missing `baseURL` in its `opencode.json`
+  entry.
 
 ## Verify your servers without the TUI
 
@@ -113,13 +115,11 @@ elsewhere.
 
 ### Worked example (self-hosted faster-whisper + Qwen-TTS)
 
-`~/.config/opencode/voice.json`:
+`~/.config/opencode/voice.json` — the LLM (normalization) is auto-resolved
+from the model the TUI is currently using, so no LLM fields are needed here:
 
 ```json
 {
-  "endpoint": "https://your-llm-gateway/v1",
-  "model": "your-llm-model",
-  "apiKeyEnv": "LLM_API_KEY",
   "sttEndpoint": "http://10.11.60.146:9000/v1",
   "sttModel": "Systran/faster-whisper-small",
   "sttApiKey": "sk-...",
@@ -132,29 +132,46 @@ elsewhere.
 
 ### Full option reference
 
-| Option                                                                       | Meaning                                                                                                   |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `endpoint`, `model` _(required)_                                             | LLM normalization client — OpenAI-compatible base URL and model name                                      |
-| `apiKey` / `apiKeyEnv` _(optional)_                                          | LLM key: direct value wins, else the named environment variable (omit both for unauthenticated endpoints) |
-| `sttEndpoint` _(optional)_                                                   | OpenAI-compatible transcription server base URL (adds `/audio/transcriptions`)                            |
-| `sttModel` _(optional)_                                                      | Model name for the STT API (default `whisper-large-v3-turbo`; change at runtime via `/stt-model`)         |
-| `sttApiKey` / `sttApiKeyEnv` _(optional)_                                    | STT key: direct value wins, else env var                                                                  |
-| `ttsEndpoint` _(optional)_                                                   | OpenAI-compatible speech server base URL (adds `/audio/speech`). **Unset = Piper mode**                   |
-| `ttsModel` _(optional)_                                                      | Model name for the TTS API (required in HTTP mode)                                                        |
-| `ttsVoice` _(optional)_                                                      | Default voice name in HTTP mode (default `"default"`); change at runtime via `/tts-voice`                 |
-| `ttsVoices` _(optional)_                                                     | `/tts-voice` dialog list: `string[]` or `{label, value}[]` (HTTP mode only)                               |
-| `ttsApiKey` / `ttsApiKeyEnv` _(optional)_                                    | TTS key: direct value wins, else env var                                                                  |
-| `ttsResponseFormat` _(optional)_                                             | Request `response_format`; default `mp3`; set to `null` to omit the field if your server rejects it       |
-| `ttsExtra` _(optional)_                                                      | Extra JSON params merged into the TTS request body (after the standard fields)                            |
-| `sttLanguage` _(optional)_                                                   | Spoken language for local whisper (default `auto`)                                                        |
-| `trimSilence` _(optional)_                                                   | Trim leading silence from recordings (default `true`)                                                     |
-| `tmpDir` _(optional)_                                                        | Directory for the STT recording file (default `/tmp`)                                                     |
-| `maxTokens`, `reasoningEffort`, `chatTemplateKwargs`, `retries` _(optional)_ | LLM client tuning (upstream defaults)                                                                     |
-| `sttPrompt`, `ttsAutoPrompt`, `ttsManualPrompt` _(optional)_                 | Paths to custom LLM system prompt files (markdown)                                                        |
+| Option                                                                       | Meaning                                                                                                                                            |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`, `model` _(optional)_                                             | LLM normalization — auto-resolved from the current TUI model (see "LLM auto-resolution"); explicit values win                                      |
+| `apiKey` / `apiKeyEnv` _(optional)_                                          | LLM key: direct value wins, else the named environment variable; both beat the auto-resolved provider key (omit all for unauthenticated endpoints) |
+| `sttEndpoint` _(optional)_                                                   | OpenAI-compatible transcription server base URL (adds `/audio/transcriptions`)                                                                     |
+| `sttModel` _(optional)_                                                      | Model name for the STT API (default `whisper-large-v3-turbo`; change at runtime via `/stt-model`)                                                  |
+| `sttApiKey` / `sttApiKeyEnv` _(optional)_                                    | STT key: direct value wins, else env var                                                                                                           |
+| `ttsEndpoint` _(optional)_                                                   | OpenAI-compatible speech server base URL (adds `/audio/speech`). **Unset = Piper mode**                                                            |
+| `ttsModel` _(optional)_                                                      | Model name for the TTS API (required in HTTP mode)                                                                                                 |
+| `ttsVoice` _(optional)_                                                      | Default voice name in HTTP mode (default `"default"`); change at runtime via `/tts-voice`                                                          |
+| `ttsVoices` _(optional)_                                                     | `/tts-voice` dialog list: `string[]` or `{label, value}[]` (HTTP mode only)                                                                        |
+| `ttsApiKey` / `ttsApiKeyEnv` _(optional)_                                    | TTS key: direct value wins, else env var                                                                                                           |
+| `ttsResponseFormat` _(optional)_                                             | Request `response_format`; default `mp3`; set to `null` to omit the field if your server rejects it                                                |
+| `ttsExtra` _(optional)_                                                      | Extra JSON params merged into the TTS request body (after the standard fields)                                                                     |
+| `sttLanguage` _(optional)_                                                   | Spoken language for local whisper (default `auto`)                                                                                                 |
+| `trimSilence` _(optional)_                                                   | Trim leading silence from recordings (default `true`)                                                                                              |
+| `tmpDir` _(optional)_                                                        | Directory for the STT recording file (default `/tmp`)                                                                                              |
+| `maxTokens`, `reasoningEffort`, `chatTemplateKwargs`, `retries` _(optional)_ | LLM client tuning (upstream defaults)                                                                                                              |
+| `sttPrompt`, `ttsAutoPrompt`, `ttsManualPrompt` _(optional)_                 | Paths to custom LLM system prompt files (markdown)                                                                                                 |
 
 OpenRouter note: when `sttEndpoint` points at `https://openrouter.ai/api/v1`,
 the plugin automatically uses OpenRouter's JSON/base64 transcription request
 format instead of multipart upload.
+
+### LLM auto-resolution
+
+For each LLM call (STT normalization or TTS speech conversion) the plugin
+reads the model the TUI is currently using (`context.app.model.current()`)
+and looks up that provider's OpenAI-compatible options — `baseURL` and
+`apiKey`, including the `{env:VAR}` syntax — in
+`~/.config/opencode/opencode.json` (falls back to `opencode.jsonc`). The
+request then goes to that provider's endpoint with the session's model name,
+so switching models in the TUI changes the normalization model automatically.
+
+Explicit values win, per key: an `endpoint`, `model`, `apiKey`, or
+`apiKeyEnv` set in `voice.json` or the `cli.json` `options` object overrides
+the auto-resolved value for that key. If the current provider is not
+OpenAI-compatible (no `baseURL` in its entry), set `endpoint`/`model`
+explicitly — otherwise normalization fails, STT falls back to the raw
+transcript, and TTS stays silent.
 
 ## How it works
 

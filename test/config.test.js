@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { loadVoiceConfig, resolveApiKey } from "../lib/config.js";
+import {
+  loadOpenCodeProviders,
+  loadVoiceConfig,
+  resolveApiKey,
+  resolveLlmTarget,
+} from "../lib/config.js";
 
 function tempConfig(content) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-cfg-"));
@@ -59,4 +64,69 @@ test("resolveApiKey: direct wins, then env, else null", () => {
   assert.equal(resolveApiKey({ apiKey: "" }), null);
   assert.equal(resolveApiKey({}), null);
   delete process.env.VOICE_TEST_KEY;
+});
+
+test("loadOpenCodeProviders: parses provider options and resolves {env:VAR} apiKey", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cfg-"));
+  const file = path.join(dir, "opencode.json");
+  process.env.VOICE_OC_TEST_KEY = "env-key";
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      provider: {
+        litellm: {
+          npm: "@ai-sdk/openai-compatible",
+          options: { baseURL: "http://10.11.60.145:4000", apiKey: "{env:VOICE_OC_TEST_KEY}" },
+        },
+        openai: { options: { baseURL: "https://api.openai.com/v1", apiKey: "static" } },
+        broken: { models: {} },
+      },
+    }),
+  );
+  try {
+    assert.deepEqual(loadOpenCodeProviders(file), {
+      litellm: { baseURL: "http://10.11.60.145:4000", apiKey: "env-key" },
+      openai: { baseURL: "https://api.openai.com/v1", apiKey: "static" },
+      broken: {},
+    });
+  } finally {
+    delete process.env.VOICE_OC_TEST_KEY;
+  }
+});
+
+test("loadOpenCodeProviders: missing or invalid file returns empty map without throwing", () => {
+  assert.deepEqual(
+    loadOpenCodeProviders(path.join(os.tmpdir(), "voice-none", "opencode.json")),
+    {},
+  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-cfg-"));
+  const file = path.join(dir, "opencode.json");
+  fs.writeFileSync(file, "{not json");
+  assert.deepEqual(loadOpenCodeProviders(file), {});
+});
+
+test("resolveLlmTarget: endpoint/model/apiKey for a known provider with baseURL", () => {
+  const providers = { litellm: { baseURL: "http://10.11.60.145:4000", apiKey: "sk-dummy" } };
+  assert.deepEqual(
+    resolveLlmTarget({ providerID: "litellm", modelID: "Qwen3.8-27B-VLLM" }, providers),
+    { endpoint: "http://10.11.60.145:4000", model: "Qwen3.8-27B-VLLM", apiKey: "sk-dummy" },
+  );
+});
+
+test("resolveLlmTarget: null for unknown provider, missing baseURL, or no current model", () => {
+  const providers = {
+    litellm: { baseURL: "http://10.11.60.145:4000", apiKey: "sk-dummy" },
+    local: { apiKey: "sk-x" },
+  };
+  assert.equal(resolveLlmTarget({ providerID: "anthropic", modelID: "claude" }, providers), null);
+  assert.equal(resolveLlmTarget({ providerID: "local", modelID: "gpt" }, providers), null);
+  assert.equal(resolveLlmTarget(undefined, providers), null);
+});
+
+test("resolveLlmTarget: provider without apiKey yields null apiKey", () => {
+  const providers = { litellm: { baseURL: "http://10.11.60.145:4000" } };
+  assert.deepEqual(
+    resolveLlmTarget({ providerID: "litellm", modelID: "Qwen3.8-27B-VLLM" }, providers),
+    { endpoint: "http://10.11.60.145:4000", model: "Qwen3.8-27B-VLLM", apiKey: null },
+  );
 });

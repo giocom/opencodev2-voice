@@ -15,6 +15,11 @@
 // and/or cli.json plugin options (options win on conflict):
 //   { "package": "opencode-voice-local", "options": { "endpoint": "...", "model": "...", "apiKey": "..." } }
 //
+// LLM: auto-resolved per call from the TUI's current model (provider + model)
+// and the provider's OpenAI-compatible options (baseURL/apiKey) in
+// ~/.config/opencode/opencode.json; explicit endpoint/model/apiKey/apiKeyEnv
+// in voice.json or cli.json win over the auto values, per key.
+//
 // Runtime state (model, mic, voice, tts mode) persisted via context.storage.
 //
 // Commands:
@@ -40,7 +45,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import { Plugin } from "@opencode/plugin/tui";
-import { loadVoiceConfig } from "./lib/config.js";
+import { loadOpenCodeProviders, loadVoiceConfig, resolveLlmTarget } from "./lib/config.js";
 import { registerSTT } from "./lib/stt.js";
 import { registerTTS, resolveVoice } from "./lib/tts.js";
 import { createTtsEngine } from "./lib/tts-engine.js";
@@ -238,6 +243,32 @@ export function createApi(context, kv) {
   };
 }
 
+// Wrap the LLM client so each call auto-resolves the model (and the provider's
+// OpenAI-compatible endpoint/key from ~/.config/opencode/opencode.json) from
+// the TUI's current model — the user can switch models live. Explicit
+// voice.json/cli.json endpoint/model/apiKey/apiKeyEnv win, per key.
+function withAutoLlm(complete, context, voiceConfig) {
+  return (params) => {
+    let current = null;
+    try {
+      current = context.app?.model?.current?.();
+    } catch {
+      current = null;
+    }
+    const target = resolveLlmTarget(current, loadOpenCodeProviders());
+    if (target) {
+      const overrides = {};
+      if (!voiceConfig.model) overrides.model = target.model;
+      if (!voiceConfig.endpoint) overrides.endpoint = target.endpoint;
+      if (target.apiKey && !voiceConfig.apiKey && !voiceConfig.apiKeyEnv) {
+        overrides.apiKey = target.apiKey;
+      }
+      return complete({ ...params, config: { ...(params.config ?? {}), ...overrides } });
+    }
+    return complete(params);
+  };
+}
+
 function toCommand(command) {
   return {
     id: command.value,
@@ -259,7 +290,7 @@ export default Plugin.define({
     // voice.json (or $VOICE_CONFIG) is merged under the cli.json options;
     // options win on conflict.
     const voiceConfig = loadVoiceConfig(options);
-    const { complete } = createClient(voiceConfig, logger);
+    const complete = withAutoLlm(createClient(voiceConfig, logger).complete, context, voiceConfig);
 
     const prompts = {
       stt: loadPromptFile(options?.sttPrompt, logger, "STT"),
