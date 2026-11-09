@@ -70,6 +70,16 @@ On the machine running the OpenCode TUI:
 - **LLM**: any OpenAI-compatible `/chat/completions` endpoint for text
   normalization (Anthropic, OpenAI, Ollama, vLLM, LM Studio, ...).
 
+## Verify your servers without the TUI
+
+```bash
+node e2e-check.mjs ["test phrase"]
+```
+
+Synthesizes the phrase on your TTS server (plays it through your audio
+player), feeds that exact audio to your STT server, and prints the
+transcription — a TTS→STT round-trip using the plugin's own code paths.
+
 ## Commands
 
 `leader` is `ctrl+x` by default (`leader+s` = `ctrl+x` then `s`).
